@@ -1,32 +1,55 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import sensor
+from esphome.components import sensor, i2c
 from esphome.const import (
-    CONF_ID, CONF_ADDRESS, CONF_NAME,
-    DEVICE_CLASS_PH, STATE_CLASS_MEASUREMENT, UNIT_PH
+    CONF_ID,
+    CONF_ADDRESS,
+    CONF_NAME,
+    DEVICE_CLASS_PH,
+    STATE_CLASS_MEASUREMENT,
+    UNIT_PH,
 )
 
-DEPENDENCIES = ['i2c']
+# Указываем, что этот компонент автоматически загружает базовый компонент sensor
+AUTO_LOAD = ["sensor"]
 
-ph_sensor_ns = cg.esphome_ns.namespace('ph_sensor')
-PH_Sensor = ph_sensor_ns.class_('PH_Sensor', cg.PollingComponent)
+# Указываем зависимости
+DEPENDENCIES = ["i2c"]
 
-CONFIG_SCHEMA = cv.COMPONENT_SCHEMA.extend({
-    cv.GenerateID(): cv.declare_id(PH_Sensor),
-    cv.Required(CONF_NAME): cv.string,
-    cv.Optional(CONF_ADDRESS, default=0x00): cv.i2c_address,
-    cv.Optional('update_interval', default='60s'): cv.update_interval,
-    cv.Optional('accuracy_decimals', default=3): cv.int_range(min=0, max=5),
-    cv.Optional('unit_of_measurement', default=UNIT_PH): cv.string,
-    cv.Optional('icon', default="mdi:ph"): cv.icon,
-    cv.Optional('device_class', default=DEVICE_CLASS_PH): cv.one_of(*sensor.DEVICE_CLASSES, lower=True),
-    cv.Optional('state_class', default=STATE_CLASS_MEASUREMENT): cv.one_of(*sensor.STATE_CLASSES, lower=True),
-})
+# Создаём пространство имён для нашего компонента
+# Убедись, что в ph_sensor.h используется namespace ph_sensor или esphome::ph_sensor
+ph_sensor_ns = cg.esphome_ns.namespace("ph_sensor")
 
+# Определяем C++ класс
+# Наследуемся от PollingComponent (для update_interval), Sensor и I2CDevice
+PHSensor = ph_sensor_ns.class_(
+    "PHSensor", cg.PollingComponent, sensor.Sensor, i2c.I2CDevice
+)
+
+# Определяем схему конфигурации
+CONFIG_SCHEMA = sensor.sensor_schema( # Используем sensor.schema для создания сенсора
+    PHSensor,                         # Указываем наш C++ класс
+    unit_of_measurement=UNIT_PH,      # Единицы измерения
+    accuracy_decimals=3,              # Знаки после запятой
+    device_class=DEVICE_CLASS_PH,     # Класс устройства
+    state_class=STATE_CLASS_MEASUREMENT, # Класс состояния
+    icon="mdi:ph"                     # Иконка
+).extend(                             # Добавляем общие настройки компонента
+    cv.polling_component_schema("60s") # Настройки PollingComponent (update_interval)
+).extend(                           # Добавляем настройки I2C
+    i2c.i2c_device_schema(0x00)      # Схема I2C устройства, 0x00 по умолчанию
+)
+
+# Функция, генерирующая C++ код
 async def to_code(config):
+    # Создаём новую переменную C++ класса PHSensor
     var = cg.new_Pvariable(config[CONF_ID])
+
+    # Регистрируем компонент (для setup, loop и т.д.)
     await cg.register_component(var, config)
-    sens = await sensor.new_sensor(config)
-    cg.add(var.set_sensor(sens))
-    if CONF_ADDRESS in config:
-        cg.add(var.set_address(config[CONF_ADDRESS]))
+
+    # Регистрируем его как sensor
+    await sensor.register_sensor(var, config)
+
+    # Регистрируем его как I2CDevice
+    await i2c.register_i2c_device(var, config)
